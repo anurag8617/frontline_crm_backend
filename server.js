@@ -22,7 +22,16 @@ app.set("trust proxy", 1);
 // ── Security headers ──────────────────────────────────────────
 app.use(
   helmet({
-    contentSecurityPolicy: false, // frontend uses inline scripts
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://fonts.googleapis.com"],
+        "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        "font-src": ["'self'", "https://fonts.gstatic.com"],
+        "img-src": ["'self'", "data:", "https://*"],
+        "connect-src": ["'self'", "https://*"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
   }),
 );
