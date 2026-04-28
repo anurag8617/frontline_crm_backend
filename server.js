@@ -6,7 +6,7 @@
 
 require("dotenv").config();
 const express = require("express");
-const sequelize = require("./config/database");
+const { sequelize, pool } = require("./config/database");
 const cors = require("cors");
 const helmet = require("helmet");
 const path = require("path");
@@ -105,6 +105,33 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
     db: "connected", // If this route is reached, the server is up and DB was authenticated
   });
+});
+
+// ── Test DB Connection Endpoint ───────────────────────────────
+app.get("/test-db", async (req, res) => {
+  try {
+    // Test Sequelize
+    await sequelize.authenticate();
+    
+    // Test Raw Pool (mysql2)
+    const [rows] = await pool.query("SELECT 1 + 1 AS solution");
+    
+    res.json({
+      success: true,
+      message: "Database connection successful!",
+      sequelize: "connected",
+      pool: "connected",
+      test_query: rows[0].solution === 2 ? "passed" : "failed"
+    });
+  } catch (error) {
+    console.error("Database test failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed",
+      error: error.message,
+      code: error.code // Useful for diagnosing ECONNREFUSED, Access Denied, etc.
+    });
+  }
 });
 
 // ── Serve frontend static files ───────────────────────────────
