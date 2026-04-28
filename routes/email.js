@@ -4,7 +4,7 @@ const nodemailer = require("nodemailer");
 const { EmailLog, Lead } = require("../models");
 const { protect } = require("../middleware/auth");
 
-router.use(protect);
+// router.use(protect);
 
 // Create transporter (lazy, so env is loaded first)
 let _transporter = null;
@@ -12,7 +12,7 @@ function getTransporter() {
   if (!_transporter) {
     _transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT) || 587,
+      port: Number(process.env.SMTP_PORT) || 465,
       secure: process.env.SMTP_SECURE === "true",
       auth: {
         user: process.env.SMTP_USER,
@@ -25,7 +25,7 @@ function getTransporter() {
 }
 
 // POST /api/email/send
-router.post("/send", async (req, res) => {
+router.post("/send",protect, async (req, res) => {
   const { to, subject, body, leadId, module: mod } = req.body;
 
   if (!to || !subject || !body) {
