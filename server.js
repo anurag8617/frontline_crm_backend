@@ -25,8 +25,17 @@ app.use(
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
-        "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://fonts.googleapis.com"],
-        "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        "script-src": [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "https://fonts.googleapis.com",
+        ],
+        "style-src": [
+          "'self'",
+          "'unsafe-inline'",
+          "https://fonts.googleapis.com",
+        ],
         "font-src": ["'self'", "https://fonts.gstatic.com"],
         "img-src": ["'self'", "data:", "https://*"],
         "connect-src": ["'self'", "https://*"],
@@ -112,16 +121,16 @@ app.get("/test-db", async (req, res) => {
   try {
     // Test Sequelize
     await sequelize.authenticate();
-    
+
     // Test Raw Pool (mysql2)
     const [rows] = await pool.query("SELECT 1 + 1 AS solution");
-    
+
     res.json({
       success: true,
       message: "Database connection successful!",
       sequelize: "connected",
       pool: "connected",
-      test_query: rows[0].solution === 2 ? "passed" : "failed"
+      test_query: rows[0].solution === 2 ? "passed" : "failed",
     });
   } catch (error) {
     console.error("Database test failed:", error);
@@ -129,23 +138,29 @@ app.get("/test-db", async (req, res) => {
       success: false,
       message: "Database connection failed",
       error: error.message,
-      code: error.code // Useful for diagnosing ECONNREFUSED, Access Denied, etc.
+      code: error.code, // Useful for diagnosing ECONNREFUSED, Access Denied, etc.
     });
   }
 });
 
 // ── Serve frontend static files ───────────────────────────────
-const frontendPath = path.join(__dirname, "..", "frontend");
-app.use(express.static(frontendPath));
+// const frontendPath = path.join(__dirname, "..", "frontend");
+// app.use(express.static(frontendPath));
 
-// ── SPA catch-all: every non-API route → frontend ─────────────
-app.get("*", (req, res) => {
-  if (req.path.startsWith("/api/")) {
-    return res
-      .status(404)
-      .json({ success: false, message: "API route not found." });
-  }
-  res.sendFile(path.join(frontendPath, "index.html"));
+// // ── SPA catch-all: every non-API route → frontend ─────────────
+// app.get("*", (req, res) => {
+//   if (req.path.startsWith("/api/")) {
+//     return res
+//       .status(404)
+//       .json({ success: false, message: "API route not found." });
+//   }
+//   res.sendFile(path.join(frontendPath, "index.html"));
+// });
+app.get("/", (req, res) => {
+  res.json({
+    success: true,
+    message: "🚀 Frontline CRM Backend Running",
+  });
 });
 
 // ── Global error handler ──────────────────────────────────────
