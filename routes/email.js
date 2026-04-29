@@ -1,10 +1,12 @@
 const express = require("express");
 const router = express.Router();
-// Import your new Sequelize models
+
+// IMPORTANT: Update these paths if your models are located differently
 const EmailLog = require("../models/EmailLog");
 const Lead = require("../models/Lead");
 const { protect } = require("../middleware/auth");
 
+// Protect all routes with JWT
 router.use(protect);
 
 // POST /api/email/send
@@ -17,43 +19,42 @@ router.post("/send", async (req, res) => {
       .json({ success: false, message: "to, subject, and body are required." });
   }
 
-  const fromName = process.env.SMTP_FROM_NAME || "Frontline Island Bar & Grill";
-  const fromEmail =
-    process.env.SMTP_FROM_EMAIL || "frontlineislandbarandgrill1@gmail.com";
-
   try {
-    // Send email using Frontline's Secure WordPress Email API
-    const response = await fetch(
-      "https://frontlinebar.com/wp-json/secure-email/v1/send",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.WP_EMAIL_API_KEY}`,
-        },
-        body: JSON.stringify({
-          to: to,
-          subject: subject,
-          message: bodyToHtml(body),
-          headers: [`From: ${fromName} <${fromEmail}>`],
-        }),
-      },
-    );
+    const wpApiUrl = process.env.WP_EMAIL_API_URL;
+    const wpApiKey = process.env.WP_EMAIL_API_KEY;
 
-    const responseData = await response.json();
-
-    if (!response.ok || responseData.status !== "success") {
-      throw new Error(responseData.message || "WordPress API Error");
+    if (!wpApiUrl || !wpApiKey) {
+      throw new Error("WP_EMAIL_API_URL or WP_EMAIL_API_KEY missing in .env");
     }
 
-    // Sequelize: Find the lead
+    // 1. Send to WordPress API
+    const response = await fetch(wpApiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${wpApiKey}`,
+      },
+      body: JSON.stringify({
+        to: to,
+        subject: subject,
+        message: bodyToHtml(body),
+        headers: ["Content-Type: text/html; charset=UTF-8"],
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`WordPress API Error (${response.status}): ${errText}`);
+    }
+
+    // 2. Fetch Lead for logging (SEQUELIZE SYNTAX)
     let leadOrg = "";
     if (leadId) {
-      const lead = await Lead.findByPk(leadId); // Changed from findById
-      leadOrg = lead ? lead.org : "";
+      const lead = await Lead.findByPk(leadId); // Changed from Mongoose findById
+      if (lead) leadOrg = lead.org;
     }
 
-    // Sequelize: Create the log
+    // 3. Log success in SQL Database (SEQUELIZE SYNTAX)
     const log = await EmailLog.create({
       leadId: leadId || null,
       leadOrg,
@@ -61,33 +62,37 @@ router.post("/send", async (req, res) => {
       subject,
       body,
       status: "sent",
-      sentBy: req.user.id, // Changed from req.user._id
+      sentBy: req.user.id, // Sequelize uses .id (not ._id like Mongoose)
       sentByName: req.user.displayName,
       module: mod || "",
     });
 
     res.json({
       success: true,
-      message: "Email queued successfully!",
+      message: "Email sent via WP API!",
       logId: log.id,
     });
   } catch (err) {
     console.error("Email send error:", err);
 
-    // Log failure in Sequelize
+    // 4. Log failure in DB safely
     try {
-      await EmailLog.create({
-        leadId: leadId || null,
-        to,
-        subject,
-        body,
-        status: "failed",
-        error: err.message,
-        sentBy: req.user.id,
-        sentByName: req.user.displayName,
-        module: mod || "",
-      });
-    } catch (_) {}
+      if (EmailLog) {
+        await EmailLog.create({
+          leadId: leadId || null,
+          to,
+          subject,
+          body,
+          status: "failed",
+          error: err.message,
+          sentBy: req.user?.id || null, // Safe fallback
+          sentByName: req.user?.displayName || "Unknown",
+          module: mod || "",
+        });
+      }
+    } catch (dbErr) {
+      console.error("Could not save error to database:", dbErr);
+    }
 
     res.status(500).json({
       success: false,
@@ -101,14 +106,13 @@ router.get("/logs", async (req, res) => {
   try {
     const { leadId, limit = 50 } = req.query;
 
-    // Sequelize: Build the where clause
     const whereClause = leadId ? { leadId } : {};
 
-    // Sequelize: Find all with ordering and limit
+    // SEQUELIZE SYNTAX for finding and sorting
     const logs = await EmailLog.findAll({
       where: whereClause,
       order: [["createdAt", "DESC"]],
-      limit: parseInt(limit),
+      limit: parseInt(limit, 10),
     });
 
     res.json({ success: true, data: logs, count: logs.length });
@@ -120,20 +124,7 @@ router.get("/logs", async (req, res) => {
   }
 });
 
-// GET /api/email/test — verify API config
-router.get("/test", async (req, res) => {
-  if (process.env.WP_EMAIL_API_KEY) {
-    res.json({
-      success: true,
-      message: "WordPress Email API configured successfully.",
-    });
-  } else {
-    res
-      .status(500)
-      .json({ success: false, message: "WP_EMAIL_API_KEY is missing." });
-  }
-});
-
+// Helper: convert plain text to simple HTML
 function bodyToHtml(text) {
   const escaped = text
     .replace(/&/g, "&amp;")
@@ -145,8 +136,6 @@ function bodyToHtml(text) {
 <body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#f9f9f9;">
   <div style="background:white;padding:30px;border-radius:8px;border-top:4px solid #00b4a0;">
     <div style="white-space:pre-line;font-size:14px;line-height:1.7;color:#333;">${escaped}</div>
-    <hr style="margin:24px 0;border:none;border-top:1px solid #eee;"/>
-    <div style="font-size:12px;color:#888;">Sent via Frontline Island Bar & Grill CRM</div>
   </div>
 </body>
 </html>`;
