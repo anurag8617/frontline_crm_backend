@@ -11,21 +11,18 @@ let _transporter = null;
 function getTransporter() {
   if (!_transporter) {
     _transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 465,
-      secure: process.env.SMTP_SECURE === "true",
+      service: "gmail", // This tells Nodemailer to automatically configure for Google Mail
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        pass: process.env.SMTP_PASS, // This MUST be an App Password, not your login password
       },
-      tls: { rejectUnauthorized: false },
     });
   }
   return _transporter;
 }
 
 // POST /api/email/send
-router.post("/send",protect, async (req, res) => {
+router.post("/send", protect, async (req, res) => {
   const { to, subject, body, leadId, module: mod } = req.body;
 
   if (!to || !subject || !body) {
